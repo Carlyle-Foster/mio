@@ -1,7 +1,9 @@
+#![allow(clippy::useless_conversion)]
 use crate::event::Event;
 use crate::sys;
 
 use std::fmt;
+use std::mem::transmute;
 
 /// A collection of readiness events.
 ///
@@ -104,7 +106,7 @@ impl Events {
     /// assert_eq!(1024, events.capacity());
     /// ```
     pub fn capacity(&self) -> usize {
-        self.inner.capacity()
+        self.as_vec().capacity()
     }
 
     /// Returns `true` if `self` contains no `Event` values.
@@ -118,7 +120,7 @@ impl Events {
     /// assert!(events.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+        self.as_vec().is_empty()
     }
 
     /// Returns an iterator over the `Event` values.
@@ -189,6 +191,13 @@ impl Events {
     pub(crate) fn sys(&mut self) -> &mut sys::Events {
         &mut self.inner
     }
+
+    /// this is safe because the memory layout of `Event` is the
+    /// same as `sys::Event` due to the `repr(transparent)` attribute.
+    pub(crate) fn as_vec(&self) -> &Vec<Event> {
+        let inner: &Vec<sys::Event> = (&self.inner).into();
+        unsafe { transmute(inner) }
+    }
 }
 
 impl<'a> IntoIterator for &'a Events {
@@ -204,22 +213,18 @@ impl<'a> Iterator for Iter<'a> {
     type Item = &'a Event;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let ret = self
-            .inner
-            .inner
-            .get(self.pos)
-            .map(Event::from_sys_event_ref);
+        let ret = self.inner.as_vec().get(self.pos);
         self.pos += 1;
         ret
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let size = self.inner.inner.len();
+        let size = self.inner.as_vec().len();
         (size, Some(size))
     }
 
     fn count(self) -> usize {
-        self.inner.inner.len()
+        self.inner.as_vec().len()
     }
 }
 
